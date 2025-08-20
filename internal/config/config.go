@@ -8,8 +8,9 @@ import (
 )
 
 type Config struct {
-	HTTP HTTPConfig
-	DB   DBConfig
+	HTTP *HTTPConfig
+	DB   *DBConfig
+	Auth *AuthConfig
 }
 
 type HTTPConfig struct {
@@ -26,102 +27,102 @@ type DBConfig struct {
 	Port     int
 }
 
+type AuthConfig struct {
+	JwtSecret    string
+	JwtExpiresIn time.Duration
+}
+
 func MustLoad() *Config {
 	cfg, err := Load()
 	if err != nil {
 		panic("failed to load config: " + err.Error())
 	}
-
 	return cfg
 }
 
 func Load() (*Config, error) {
-	cfg := &Config{}
+	var cfg Config
+	var err error
 
-	writeTimeoutDur, err := getDurationEnv("HTTP_WRITE_TIMEOUT")
-	if err != nil {
+	// HTTP Config
+	if cfg.HTTP.Port, err = getIntEnv("API_PORT", 8080); err != nil {
+		return nil, fmt.Errorf("http port: %w", err)
+	}
+	if cfg.HTTP.ReadTimeout, err = getDurationEnv("HTTP_READ_TIMEOUT", 15*time.Second); err != nil {
+		return nil, fmt.Errorf("read timeout: %w", err)
+	}
+	if cfg.HTTP.WriteTimeout, err = getDurationEnv("HTTP_WRITE_TIMEOUT", 15*time.Second); err != nil {
 		return nil, fmt.Errorf("write timeout: %w", err)
 	}
 
-	readTimeoutDur, err := getDurationEnv("HTTP_READ_TIMEOUT")
-	if err != nil {
-		return nil, fmt.Errorf("read timeout: %w", err)
+	// DB Config
+	if cfg.DB.User, err = getStringEnv("DB_USER"); err != nil {
+		return nil, fmt.Errorf("db user: %w", err)
 	}
-
-	httpPort, err := getIntEnv("API_PORT")
-	if err != nil {
-		return nil, fmt.Errorf("http port: %w", err)
+	if cfg.DB.Name, err = getStringEnv("DB_NAME"); err != nil {
+		return nil, fmt.Errorf("db name: %w", err)
 	}
-
-	cfg.HTTP = HTTPConfig{
-		Port:         httpPort,
-		WriteTimeout: writeTimeoutDur,
-		ReadTimeout:  readTimeoutDur,
+	if cfg.DB.Password, err = getStringEnv("DB_PASSWORD"); err != nil {
+		return nil, fmt.Errorf("db password: %w", err)
 	}
-
-	dbPort, err := getIntEnv("DB_PORT")
-	if err != nil {
+	if cfg.DB.Host, err = getStringEnv("DB_HOST"); err != nil {
+		return nil, fmt.Errorf("db host: %w", err)
+	}
+	if cfg.DB.Port, err = getIntEnv("DB_PORT", 5432); err != nil {
 		return nil, fmt.Errorf("db port: %w", err)
 	}
 
-	cfg.DB = DBConfig{
-		User:     getRequiredEnv("DB_USER"),
-		Name:     getRequiredEnv("DB_NAME"),
-		Password: getRequiredEnv("DB_PASSWORD"),
-		Host:     getRequiredEnv("HOST"),
-		Port:     dbPort,
+	// Auth Config
+	if cfg.Auth.JwtSecret, err = getStringEnv("JWT_SECRET"); err != nil {
+		return nil, fmt.Errorf("jwt secret: %w", err)
+	}
+	if cfg.Auth.JwtExpiresIn, err = getDurationEnv("JWT_EXPIRES_IN", 24*time.Hour); err != nil {
+		return nil, fmt.Errorf("jwt expires in: %w", err)
 	}
 
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("validation failed: %w", err)
 	}
 
-	return cfg, nil
+	return &cfg, nil
 }
 
-func getDurationEnv(name string) (time.Duration, error) {
+func getStringEnv(name string) (string, error) {
 	val := os.Getenv(name)
 	if val == "" {
-		return 0, fmt.Errorf("env %v is required", name)
+		return "", fmt.Errorf("env %s is required", name)
 	}
-
-	return time.ParseDuration(val)
+	return val, nil
 }
 
-func getRequiredEnv(name string) string {
+func getIntEnv(name string, defaultValue int) (int, error) {
 	val := os.Getenv(name)
 	if val == "" {
-		panic(fmt.Sprintf("env %s is required", name))
+		return defaultValue, nil
 	}
-
-	return val
-}
-
-func getIntEnv(name string) (int, error) {
-	val := os.Getenv(name)
-	if val == "" {
-		return 0, fmt.Errorf("env %v is required", name)
-	}
-
 	return strconv.Atoi(val)
+}
+
+func getDurationEnv(name string, defaultValue time.Duration) (time.Duration, error) {
+	val := os.Getenv(name)
+	if val == "" {
+		return defaultValue, nil
+	}
+	return time.ParseDuration(val)
 }
 
 func (c *Config) validate() error {
 	if c.HTTP.Port <= 0 || c.HTTP.Port > 65535 {
 		return fmt.Errorf("http port out of range")
 	}
-
 	if c.DB.Port <= 0 || c.DB.Port > 65535 {
 		return fmt.Errorf("db port out of range")
 	}
-
-	if c.HTTP.ReadTimeout <= 0 {
-		return fmt.Errorf("read timeout must be positive")
+	if c.HTTP.ReadTimeout < 0 {
+		return fmt.Errorf("read timeout must be non-negative")
 	}
-
-	if c.HTTP.WriteTimeout <= 0 {
-		return fmt.Errorf("write timeout must be positive")
+	if c.HTTP.WriteTimeout < 0 {
+		return fmt.Errorf("write timeout must be non-negative")
 	}
-
 	return nil
 }
