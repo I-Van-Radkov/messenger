@@ -30,7 +30,7 @@ func NewWebSocketHandlers(websocketService WebSocketProvider) *WebSocketHandlers
 }
 
 func (h *WebSocketHandlers) WebSocketHandler(c *gin.Context) {
-	userId := c.Request.Context().Value("user_id").(int64)
+	userId := c.GetInt64("user_id")
 
 	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {

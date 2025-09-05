@@ -41,7 +41,12 @@ func MustLoad() *Config {
 }
 
 func Load() (*Config, error) {
-	var cfg Config
+	cfg := Config{
+		HTTP: &HTTPConfig{},
+		DB:   &DBConfig{},
+		Auth: &AuthConfig{},
+	}
+
 	var err error
 
 	// HTTP Config
@@ -65,7 +70,7 @@ func Load() (*Config, error) {
 	if cfg.DB.Password, err = getStringEnv("DB_PASSWORD"); err != nil {
 		return nil, fmt.Errorf("db password: %w", err)
 	}
-	if cfg.DB.Host, err = getStringEnv("DB_HOST"); err != nil {
+	if cfg.DB.Host, err = getStringEnv("HOST"); err != nil {
 		return nil, fmt.Errorf("db host: %w", err)
 	}
 	if cfg.DB.Port, err = getIntEnv("DB_PORT", 5432); err != nil {

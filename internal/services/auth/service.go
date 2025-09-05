@@ -3,41 +3,35 @@ package auth
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/I-Van-Radkov/messenger/internal/config"
 	"github.com/I-Van-Radkov/messenger/internal/models"
-	"github.com/I-Van-Radkov/messenger/internal/repository"
 	"github.com/I-Van-Radkov/messenger/internal/utils"
 )
 
-var (
-	ErrEmailAlreadyExists    = errors.New("email already exists")
-	ErrUsernameAlreadyExists = errors.New("username already exists")
-	ErrUserNotFound          = errors.New("user not found")
-	ErrInvalidPassword       = errors.New("invalid password")
-	ErrInternalServer        = errors.New("internal server error")
-)
-
-type AuthService struct {
-	userRepo repository.UserRepository
-	cfg      *config.AuthConfig
+type UserProvider interface {
+	Create(ctx context.Context, user *models.User) (int64, error)
+	GetByEmail(ctx context.Context, email string) (*models.User, error)
+	GetByUsername(ctx context.Context, username string) (*models.User, error)
 }
 
-func NewService(userRepo repository.UserRepository, cfg *config.AuthConfig) AuthService {
+type AuthService struct {
+	userService UserProvider
+	cfg         *config.AuthConfig
+}
+
+func NewService(userService UserProvider, cfg *config.AuthConfig) AuthService {
 	return AuthService{
-		userRepo: userRepo,
-		cfg:      cfg,
+		userService: userService,
+		cfg:         cfg,
 	}
 }
 
-func (s AuthService) Register(email, username, password string) (string, error) {
-	ctx := context.Background()
-
+func (s AuthService) Register(ctx context.Context, email, username, password string) (string, error) {
 	// Проверка на то, не существует ли пользователя по email
-	_, err := s.userRepo.GetByEmail(ctx, email)
+	_, err := s.userService.GetByEmail(ctx, email)
 	if err == nil {
 		return "", ErrEmailAlreadyExists
 	}
@@ -46,7 +40,7 @@ func (s AuthService) Register(email, username, password string) (string, error) 
 	}
 
 	// Проверка на уникальность username
-	_, err = s.userRepo.GetByUsername(ctx, username)
+	_, err = s.userService.GetByUsername(ctx, username)
 	if err == nil {
 		return "", ErrUsernameAlreadyExists
 	}
@@ -68,7 +62,7 @@ func (s AuthService) Register(email, username, password string) (string, error) 
 		CreatedAt:    time.Now(),
 	}
 
-	userId, err := s.userRepo.Create(ctx, user)
+	userId, err := s.userService.Create(ctx, user)
 	if err != nil {
 		return "", fmt.Errorf("%w: failed to create user", ErrInternalServer)
 	}
@@ -83,12 +77,11 @@ func (s AuthService) Register(email, username, password string) (string, error) 
 	return tokenString, nil
 }
 
-func (s AuthService) Login(email, password string) (string, error) {
-	ctx := context.Background()
+func (s AuthService) Login(ctx context.Context, email, password string) (string, error) {
 	var user *models.User
 
 	// Найти поьзователя, если он действительно существует
-	user, err := s.userRepo.GetByEmail(ctx, email)
+	user, err := s.userService.GetByEmail(ctx, email)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", ErrUserNotFound

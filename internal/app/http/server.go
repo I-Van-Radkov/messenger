@@ -2,7 +2,6 @@ package http
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 )
@@ -38,6 +37,5 @@ func (a *Server) Run() error {
 		WriteTimeout: a.writeTimeout,
 	}
 
-	log.Println("ЗАПУЩЕНО ЕПТ")
 	return s.ListenAndServe()
 }

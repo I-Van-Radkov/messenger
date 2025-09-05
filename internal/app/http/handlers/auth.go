@@ -1,19 +1,20 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
 
-	"github.com/I-Van-Radkov/messenger/internal/app/http/dto"
+	"github.com/I-Van-Radkov/messenger/internal/dto"
 	"github.com/I-Van-Radkov/messenger/internal/services/auth"
 	"github.com/gin-gonic/gin"
 )
 
 type AuthProvider interface {
-	Register(email, username, password string) (string, error)
-	Login(email, password string) (string, error)
+	Register(ctx context.Context, email, username, password string) (string, error)
+	Login(ctx context.Context, email, password string) (string, error)
 }
 
 type AuthHandlers struct {
@@ -27,6 +28,8 @@ func NewAuthHandlers(authService AuthProvider) *AuthHandlers {
 }
 
 func (h *AuthHandlers) RegisterHandler(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	var req dto.RegisterRequest
 	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -43,7 +46,7 @@ func (h *AuthHandlers) RegisterHandler(c *gin.Context) {
 		return
 	}
 
-	tokenString, err := h.authService.Register(req.Email, req.Username, req.Password) // возвращает jwt token и ошибку
+	tokenString, err := h.authService.Register(ctx, req.Email, req.Username, req.Password) // возвращает jwt token и ошибку
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrEmailAlreadyExists):
@@ -67,6 +70,8 @@ func (h *AuthHandlers) RegisterHandler(c *gin.Context) {
 }
 
 func (h *AuthHandlers) LoginHandler(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	var req dto.LoginRequest
 	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -83,7 +88,7 @@ func (h *AuthHandlers) LoginHandler(c *gin.Context) {
 		return
 	}
 
-	tokenString, err := h.authService.Login(req.Email, req.Password)
+	tokenString, err := h.authService.Login(ctx, req.Email, req.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrUserNotFound):
@@ -104,4 +109,15 @@ func (h *AuthHandlers) LoginHandler(c *gin.Context) {
 		Expires:  time.Now().Add(24 * time.Hour),
 	})
 	c.JSON(http.StatusOK, gin.H{"message": "login successful"})
+}
+
+func (h *AuthHandlers) LogoutHandler(c *gin.Context) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "Bearer",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Expires:  time.Unix(0, 0),
+	})
+	c.JSON(http.StatusOK, gin.H{"message": "logged out successfully"})
 }
